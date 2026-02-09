@@ -1,5 +1,6 @@
 import re
 
+# Building the Parser
 class LogParser:
     def __init__(self):
         # Regex pattern to capture Timestamp, Status, User, and IP
@@ -13,15 +14,25 @@ class LogParser:
         # scan the text
         match = self.regex.search(log_line)
 
+        # Verify if the line matches the pattern
         if match:
+            # Extract info from the line, store them in a dictionary and return them
             return {"Timestamp": match.group("timestamp"),
                     "Status": match.group("status"),
                     "User": match.group("user"),
                     "IP": match.group("ip")}
+        # Otherwise if the line is empty or doesn't match the patter
         else:
             return None
 
-fake_log = "Feb 08 22:26:05 sshd[1234]: Accepted password for Root from 192.168.1.131 port 22"
-parser = LogParser()
-result = parser.parse(fake_log)
-print(result)
+# parser = LogParser()
+# result = parser.parse(fake_log)
+# print(result)
+# fake_log = "Feb 08 22:26:05 sshd[1234]: Accepted password for Root from 192.168.1.131 port 22"
+
+class DetectionEngine:
+    def __init__(self, threshold = 5, window_size = 60):
+        self.memory = {}
+
+    def process_event(self, log_data):
+        ...
