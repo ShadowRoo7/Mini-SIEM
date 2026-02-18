@@ -1,6 +1,9 @@
 import re
 import datetime
 import time
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
 
 # Building the Parser
 class LogParser:
@@ -87,3 +90,67 @@ class DetectionEngine(LogParser):
             # Else it creates the new entry
             elif result["IP"] not in self.memory:
                 self.memory[result["IP"]] = [result["Timestamp"]]
+
+"""Detector = DetectionEngine()
+logs = ["Feb 08 20:26:05 sshd[1234]: Failed password for Root from 192.168.1.131 port 22",
+        "Feb 08 22:26:08 sshd[1234]: Failed password for Root from 192.168.1.131 port 22",
+        "Feb 08 22:27:04 sshd[1234]: Failed password for Root from 192.168.1.131 port 22"]
+for log in logs:
+    Detector.process_event(log)"""
+
+class LogMonitor(FileSystemEventHandler):
+    def __init__(self, engine):
+        self.engine = engine
+        self.last_position = 0
+
+    def on_modified(self, event):
+        # Check filename
+        if "auth.log" in event.src_path:
+            try:
+                # Open file
+                with open("auth.log", "r") as logs:
+                    # Jump to bookmark
+                    logs.seek(self.last_position)
+
+                    # Read new lines
+                    new_lines = logs.readlines()
+
+                    # Update the bookmark immediately (save current spot)
+                    self.last_position = logs.tell()
+
+                    # send to the Brain
+                    for new_line in new_lines:
+                        self.engine.process_event(new_line)
+            except FileNotFoundError:
+                # Handle if file is deleted/rotated
+                self.last_position = 0
+
+if __name__ == "__main__":
+    # 1. Create the Brain (Logic)
+    # You can change threshold=3 to threshold=5 if you want to test stricter rules
+    engine = DetectionEngine(threshold=3)
+
+    # 2. Create the Monitor (Eyes) and give it the Brain
+    event_handler = LogMonitor(engine)
+
+    # 3. Create the Observer (The Guard)
+    observer = Observer()
+
+    # 4. Assign the Monitor to watch the CURRENT folder ('.')
+    observer.schedule(event_handler, path='.', recursive=False)
+
+    # 5. Start the Guard
+    observer.start()
+
+    print("[*] SIEM is active. Monitoring 'auth.log'...")
+
+    try:
+        # Keep the script running forever
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        # Stop the guard cleanly if you press Ctrl+C
+        observer.stop()
+        print("[*] SIEM stopped.")
+
+    observer.join()
