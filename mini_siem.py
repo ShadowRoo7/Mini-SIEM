@@ -3,6 +3,56 @@ import datetime
 import time
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+import requests
+
+
+class Notifier:
+    def __init__(self, webhook_url):
+        self.webhook_url = webhook_url
+        self.api_url = "http://ip-api.com/json/"
+
+    def get_geo_location(self, ip):
+        # Make the request
+        response = requests.get(f"{self.api_url}{ip}")
+
+        # Extract the JSON data
+        if response.status_code == 200:
+            data = response.json()
+            return data
+        else:
+            print("Error fetching geo location")
+            return None
+
+    def send_alert(self, ip):
+        # Fetch the data
+        geo_data = self.get_geo_location(ip)
+
+        # Check if we got valid data
+        if geo_data and geo_data.get("status") == "success":
+            country = geo_data.get("country", "Unknown")
+            city = geo_data.get("city", "Unknown")
+
+            # Webhooks (Discord/Slack) need a "content" or "text" key
+            message = f"🚨 **ALERT**: Brute Force Detected!\n**IP**: {ip}\n**Location**: {city}, {country}"
+
+            # Create the payload dictionary
+            payload = {"content": message}
+
+            # Send the payload
+            try:
+                requests.post(self.webhook_url, json=payload)
+                print(f"Alert sent for {ip} ({city}, {country})")
+            except Exception as e:
+                print(f"Failed to send alert: {e}")
+        else:
+            print(f"Could not find location for {ip}")
+
+
+# url = "https://discord.com/api/webhooks/1474114391694770432/DsjpX95R687nU6b7XqC_w7XU0iY3acKV5K-3kXs8fYGzjXxu88zKamnfd8XZUOz9E0cV"
+# Notifier(url).send_alert("45.155.205.233")
+
+# A whitelist of ip addresses
+whitelist = ["185.222.110.114", "185.222.110.115", "185.222.110.116"]
 
 
 # Building the Parser
@@ -22,22 +72,27 @@ class LogParser:
         # Verify if the line matches the pattern
         if match:
             # Extract info from the line, store them in a dictionary and return them
-            return {"Timestamp": match.group("timestamp"),
-                    "Status": match.group("status"),
-                    "User": match.group("user"),
-                    "IP": match.group("ip")}
+            return {
+                "Timestamp": match.group("timestamp"),
+                "Status": match.group("status"),
+                "User": match.group("user"),
+                "IP": match.group("ip"),
+            }
         # Otherwise if the line is empty or doesn't match the patter
         else:
             return None
+
 
 # parser = LogParser()
 # fake_log = "Feb 08 22:26:05 sshd[1234]: Accepted password for Root from 192.168.1.131 port 22"
 # result = parser.parse(fake_log)
 # print(result)
 
+
 class DetectionEngine(LogParser):
-    def __init__(self, threshold=3, window_size=60):
+    def __init__(self, notifier, threshold=3, window_size=60):
         super().__init__()
+        self.notifier = notifier
         self.memory = {}
         self.threshold = threshold
         self.window_size = window_size
@@ -57,19 +112,29 @@ class DetectionEngine(LogParser):
                 pass
         # if the result status is "Failed"
         else:
-            # 1. CONVERT: Convert the incoming log timestamp string to a datetime object
-            current_dt = datetime.datetime.strptime(result["Timestamp"], "%b %d %H:%M:%S")
+            # CONVERT: Convert the incoming log timestamp string to a datetime object
+            current_dt = datetime.datetime.strptime(
+                result["Timestamp"], "%b %d %H:%M:%S"
+            )
+
+            # Give a pass to the log from the IP in the whitelist
+            if result["IP"] in whitelist:
+                pass
 
             # Check if IP exists and count is less than 3
-            # FIXED: Changed len(result["IP"]) to len(self.memory[result["IP"]])
-            if result["IP"] in self.memory and len(self.memory[result["IP"]]) < self.threshold:
+            elif (
+                result["IP"] in self.memory
+                and len(self.memory[result["IP"]]) < self.threshold
+            ):
 
                 valid_timestamps = []
 
                 # Loop through the stored timestamps
                 for stored_time_str in self.memory[result["IP"]]:
                     # 2. CONVERT: Convert stored string to datetime for math
-                    stored_dt = datetime.datetime.strptime(stored_time_str, "%b %d %H:%M:%S")
+                    stored_dt = datetime.datetime.strptime(
+                        stored_time_str, "%b %d %H:%M:%S"
+                    )
 
                     # 3. MATH: Calculate difference in seconds
                     if (current_dt - stored_dt).total_seconds() < self.window_size:
@@ -82,14 +147,18 @@ class DetectionEngine(LogParser):
                 self.memory[result["IP"]].append(result["Timestamp"])
 
             # Check for alert logic
-            # FIXED: Moved this check AFTER adding the new timestamp so it catches the 3rd try immediately
-            if result["IP"] in self.memory and len(self.memory[result["IP"]]) >= self.threshold:
+            elif (
+                result["IP"] in self.memory
+                and len(self.memory[result["IP"]]) >= self.threshold
+            ):
                 print(f"Brute Force Attack from {result['IP']}")
+                self.notifier.send_alert(result["IP"])
                 del self.memory[result["IP"]]
 
             # Else it creates the new entry
             elif result["IP"] not in self.memory:
                 self.memory[result["IP"]] = [result["Timestamp"]]
+
 
 """Detector = DetectionEngine()
 logs = ["Feb 08 20:26:05 sshd[1234]: Failed password for Root from 192.168.1.131 port 22",
@@ -97,6 +166,7 @@ logs = ["Feb 08 20:26:05 sshd[1234]: Failed password for Root from 192.168.1.131
         "Feb 08 22:27:04 sshd[1234]: Failed password for Root from 192.168.1.131 port 22"]
 for log in logs:
     Detector.process_event(log)"""
+
 
 class LogMonitor(FileSystemEventHandler):
     def __init__(self, engine):
@@ -125,21 +195,29 @@ class LogMonitor(FileSystemEventHandler):
                 # Handle if file is deleted/rotated
                 self.last_position = 0
 
-if __name__ == "__main__":
-    # 1. Create the Brain (Logic)
-    # You can change threshold=3 to threshold=5 if you want to test stricter rules
-    engine = DetectionEngine(threshold=3)
 
-    # 2. Create the Monitor (Eyes) and give it the Brain
+if __name__ == "__main__":
+    # Set up the Notifier (Paste your URL here)
+    # NOTE: Replace this URL with your actual Discord Webhook URL
+    url = "https://discord.com/api/webhooks/1474114391694770432/DsjpX95R687nU6b7XqC_w7XU0iY3acKV5K-3kXs8fYGzjXxu88zKamnfd8XZUOz9E0cV"
+
+    # Create a Notifier object
+    notifier = Notifier(url)
+
+    # Create the Brain (Logic)
+    # You can change threshold=3 to threshold=5 if you want to test stricter rules
+    engine = DetectionEngine(notifier=notifier, threshold=3)
+
+    # Create the Monitor (Eyes) and give it the Brain
     event_handler = LogMonitor(engine)
 
-    # 3. Create the Observer (The Guard)
+    # Create the Observer (The Guard)
     observer = Observer()
 
-    # 4. Assign the Monitor to watch the CURRENT folder ('.')
-    observer.schedule(event_handler, path='.', recursive=False)
+    # Assign the Monitor to watch the CURRENT folder ('.')
+    observer.schedule(event_handler, path=".", recursive=False)
 
-    # 5. Start the Guard
+    # Start the Guard
     observer.start()
 
     print("[*] SIEM is active. Monitoring 'auth.log'...")

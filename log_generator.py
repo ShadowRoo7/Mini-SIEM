@@ -3,20 +3,31 @@ import time
 import random
 
 # A list of good ip addresses
-good_ip = ["192.168.1.105", "192.168.1.112", "192.168.1.118", "192.168.1.125", "192.168.1.131",
-           "192.168.1.202", "73.152.84.11", "217.164.78.233", "142.250.185.206", "101.44.63.87"]
+good_ip = [
+    "192.168.1.105",
+    "192.168.1.112",
+    "192.168.1.118",
+    "192.168.1.125",
+    "192.168.1.131",
+    "192.168.1.202",
+    "73.152.84.11",
+    "217.164.78.233",
+    "142.250.185.206",
+    "101.44.63.87",
+]
 
 # A list of the organization users
 Users = ["Momo", "Mimo", "Admin", "Root", "Assane"]
 
 # A list of bad ip addresses
-bad_ip = ["185.220.101.141", "94.102.61.24", "45.155.205.233"]
+bad_ip = ["185.220.101.141", "94.102.61.24", "45.155.205.233", "185.222.110.114"]
 
 # A list of bad ip addresses
 all_ip = good_ip + bad_ip
 
 # Status (Failed or Accepted)
 status = ["Accepted", "Failed"]
+
 
 def log_generator():
     try:
@@ -60,6 +71,7 @@ def log_generator():
             time.sleep(random.uniform(1, 3))
     except KeyboardInterrupt:
         print("\n[*] Log Generator stopped by user.")
+
 
 if __name__ == "__main__":
     log_generator()
