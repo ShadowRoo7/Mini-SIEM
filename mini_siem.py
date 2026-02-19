@@ -199,7 +199,7 @@ class LogMonitor(FileSystemEventHandler):
 if __name__ == "__main__":
     # Set up the Notifier (Paste your URL here)
     # NOTE: Replace this URL with your actual Discord Webhook URL
-    url = "https://discord.com/api/webhooks/1474114391694770432/DsjpX95R687nU6b7XqC_w7XU0iY3acKV5K-3kXs8fYGzjXxu88zKamnfd8XZUOz9E0cV"
+    url = "PASTE_YOUR_WEBHOOK_URL_HERE"
 
     # Create a Notifier object
     notifier = Notifier(url)
