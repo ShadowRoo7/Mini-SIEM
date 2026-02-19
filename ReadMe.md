@@ -74,7 +74,6 @@ python mini_siem.py
 
 ## 📸 What it looks like
 
-*(Add screenshots here! Recruiters love visuals.)*
 1.  A screenshot of the `auth.log` file growing.
     ![img.png](img.png)
 2.  A screenshot of the Console printing "SIEM is active...".
